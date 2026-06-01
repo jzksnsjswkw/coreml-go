@@ -1,8 +1,5 @@
-module github.com/gomlx/go-coreml
+module github.com/jzksnsjswkw/coreml-go
 
-go 1.25.5
+go 1.25.0
 
-require (
-	github.com/google/uuid v1.6.0
-	google.golang.org/protobuf v1.36.11
-)
+require golang.org/x/image v0.41.0

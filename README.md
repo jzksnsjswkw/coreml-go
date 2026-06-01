@@ -1,194 +1,182 @@
-# go-coreml
+[中文](README_CN.md)
 
-Go bindings to Apple's CoreML framework for high-performance machine learning inference on Apple Silicon.
+# coreml-go
 
-## Overview
+**coreml-go** is a Go inference library for CoreML, built for running model inference on macOS.
 
-go-coreml provides Go bindings to CoreML, enabling:
+> This project is derived from [gomlx/go-darwinml](https://github.com/gomlx/go-darwinml). The original project focuses on model construction and training pipeline wrappers, while **coreml-go** solves one core problem: **directly loading existing `.mlpackage` / `.mlmodelc` models for inference** — no model building, training, or conversion logic included.
 
-- Running ML models on Apple's Neural Engine (ANE)
-- Metal GPU acceleration
-- Programmatic model construction using MIL (Machine Learning Intermediate Language)
-- Integration with [GoMLX](https://github.com/gomlx/gomlx) as a backend
+## Features
 
-## Status
-
-**Alpha** - Core functionality is implemented but the API may change.
-
-### Implemented
-
-- [x] Low-level bridge to CoreML (tensor creation, model loading, inference)
-- [x] Protobuf types generated from CoreML MIL.proto
-- [x] MIL program builder with common operations (add, mul, matmul, conv2d, pooling, etc.)
-- [x] Model serialization to .mlpackage format
-- [x] Runtime for compiling and executing MIL programs
-- [x] GoMLX backend integration
-- [x] Weight blob support for large models
-
-### Planned
-
-- [ ] Performance benchmarks
+- Load compiled CoreML models (`.mlmodelc`) and run inference in one step
+- Compile `.mlpackage` → `.mlmodelc`
+- Support image inputs (CVPixelBuffer) and multi-array inputs (Tensor)
+- Support `float32`, `int32`, `int64`, `bool` types
+- Zero-copy reads for inference results
+- No external dependencies (only macOS + Go, powered by `cgo` calling native CoreML framework)
 
 ## Requirements
 
-- macOS 12.0+ (Monterey or later)
-- Xcode (full installation for coremlcompiler)
-- Go 1.21+
+- macOS (CoreML is an Apple private framework)
+- Go 1.22+
+- Xcode Command Line Tools (required at build time only)
+
+```bash
+xcode-select --install
+```
 
 ## Installation
 
 ```bash
-go get github.com/gomlx/go-coreml
+go get github.com/your-username/go-coreml
 ```
 
-## Usage
+## Quick Start
 
-### Building a MIL Program
+Load a model, create dummy inputs, run inference, and read results:
 
 ```go
 package main
 
 import (
     "fmt"
-    "github.com/gomlx/go-coreml/model"
-    "github.com/gomlx/go-coreml/runtime"
+    "go-coreml/bridge"
 )
 
 func main() {
-    // Build a simple model: y = relu(x)
-    b := model.NewBuilder("main")
-    x := b.Input("x", model.Float32, 2, 3)
-    y := b.Relu(x)
-    b.Output("y", y)
+    // Prevents crashes on Intel Macs; Apple Silicon can use ComputeAll or omit
+    bridge.SetComputeUnits(bridge.ComputeCPUOnly)
 
-    // Compile and load
-    rt := runtime.New()
-    exec, err := rt.Compile(b)
-    if err != nil {
-        panic(err)
-    }
-    defer exec.Close()
-
-    // Run inference
-    input := []float32{-1, 2, -3, 4, -5, 6}
-    outputs, err := exec.Run(map[string]interface{}{"x": input})
+    // 1. Compile .mlpackage → .mlmodelc (first run only, can skip afterward)
+    compiled, err := bridge.CompileModel("model.mlpackage", "")
     if err != nil {
         panic(err)
     }
 
-    result := outputs["y"].([]float32)
-    fmt.Println("Output:", result)
-    // Output: [0 2 0 4 0 6]
+    // 2. Load model
+    model, err := bridge.LoadModel(compiled)
+    if err != nil {
+        panic(err)
+    }
+    defer model.Close()
+
+    // 3. Create input tensor (batch=1, 3, 640, 640)
+    input, err := bridge.NewTensor[float32]([]int64{1, 3, 640, 640})
+    if err != nil {
+        panic(err)
+    }
+    defer input.Close()
+
+    // 4. Create output tensor
+    output, err := bridge.NewTensor[float32]([]int64{1, 100, 84})
+    if err != nil {
+        panic(err)
+    }
+    defer output.Close()
+
+    // 5. Run inference
+    err = model.Predict(
+        []string{"image"}, []bridge.TensorHandle{input},
+        []string{"output"}, []bridge.TensorHandle{output},
+    )
+    if err != nil {
+        panic(err)
+    }
+
+    // 6. Read results (zero-copy)
+    fmt.Println(output.Data())
 }
 ```
 
-### Available Operations
+### Image Input Inference
 
-The MIL builder supports these operations:
-
-- **Element-wise**: Add, Sub, Mul, Div, Neg, Abs, Pow, Min, Max
-- **Activations**: Relu, Sigmoid, Tanh, Softmax
-- **Math**: Exp, Log, Sqrt, Sin, Cos, Erf
-- **Linear Algebra**: MatMul, Einsum
-- **Convolution**: Conv, ConvTranspose, MaxPool, AvgPool
-- **Shape**: Reshape, Transpose, Concat, Gather, Pad, Slice
-- **Reductions**: ReduceSum, ReduceMean, ReduceMax, ReduceMin, ReduceProduct, ArgMax, ArgMin
-- **Comparison**: Equal, NotEqual, LessThan, LessOrEqual, GreaterThan, GreaterOrEqual
-- **Other**: Where, Iota, Cast, Clamp
-
-### Compute Unit Selection
-
-Control which compute units are used:
+If the model's input layer is an Image type (rather than MultiArray), use `PredictWithImages`:
 
 ```go
-import "github.com/gomlx/go-coreml/internal/bridge"
+imgInput, err := bridge.NewImageInput(640, 640, rgbaPix)
+if err != nil {
+    panic(err)
+}
+defer imgInput.Close()
 
-// Use all available compute units (ANE + GPU + CPU)
-rt := runtime.New(runtime.WithComputeUnits(bridge.ComputeAll))
+output, err := bridge.NewTensor[float32]([]int64{1, 300, 6})
+if err != nil {
+    panic(err)
+}
+defer output.Close()
 
-// CPU only (for debugging)
-rt := runtime.New(runtime.WithComputeUnits(bridge.ComputeCPUOnly))
-
-// CPU + GPU (skip Neural Engine)
-rt := runtime.New(runtime.WithComputeUnits(bridge.ComputeCPUAndGPU))
-
-// CPU + Neural Engine (skip GPU)
-rt := runtime.New(runtime.WithComputeUnits(bridge.ComputeCPUAndANE))
+err = model.PredictWithImages(
+    []string{"image"}, []*bridge.ImageInput{imgInput},
+    []string{"var_1440"}, []bridge.TensorHandle{output},
+)
 ```
 
-### Saving Models with Blob Storage
+## API
 
-For models with large weights (e.g., neural networks), use blob storage to keep weights in an external `weight.bin` file:
+### Global Settings
+
+| Function | Description |
+|---|---|
+| `bridge.SetComputeUnits(units)` | Set compute units. Options: `ComputeAll` (default), `ComputeCPUOnly` (compatible with Intel Mac), `ComputeCPUAndGPU`, `ComputeCPUAndANE` |
+
+### Model Compilation & Loading
+
+| Function | Description |
+|---|---|
+| `bridge.CompileModel(packagePath, outputDir)` | Compile `.mlpackage` to `.mlmodelc`, returns compiled path |
+| `bridge.LoadModel(path)` | Load a `.mlmodelc`, returns `*Model` |
+| `model.Close()` | Release model resources |
+
+### Inference
+
+| Method | Description |
+|---|---|
+| `model.Predict(inputNames, inputs, outputNames, outputs)` | Run inference with tensor inputs/outputs |
+| `model.PredictWithImages(inputNames, images, outputNames, outputs)` | Image input inference; inputs are `*ImageInput`, outputs are `TensorHandle` |
+
+### Tensors
+
+| Function / Method | Description |
+|---|---|
+| `bridge.NewTensor[T](shape)` | Create a typed tensor. `T` supports `float32`, `int32`, `int64`, `bool` |
+| `tensor.Data() []T` | Zero-copy access to the underlying data slice |
+| `tensor.Shape() []int64` | Get the tensor shape |
+| `tensor.Close()` | Release tensor resources |
+
+### Image Input
+
+| Function / Method | Description |
+|---|---|
+| `bridge.NewImageInput(width, height, rgba)` | Create an image input from RGBA pixel data |
+| `imageInput.Close()` | Release image input resources |
+
+## Intel Mac Compatibility
 
 ```go
-import "github.com/gomlx/go-coreml/model"
-
-// Build your model
-b := model.NewBuilder("main")
-// ... add operations with large weight constants ...
-program := b.Build()
-
-// Convert to CoreML model
-inputs := []model.FeatureSpec{{Name: "x", DType: model.Float32, Shape: []int64{1, 512}}}
-outputs := []model.FeatureSpec{{Name: "y", DType: model.Float32, Shape: []int64{1, 10}}}
-opts := model.DefaultBlobOptions()
-coremlModel := model.ToModel(program, inputs, outputs, opts.SerializeOptions)
-
-// Save with blob storage (tensors > 1KB are stored externally)
-err := model.SaveMLPackageWithBlobs(coremlModel, "model.mlpackage", opts)
+bridge.SetComputeUnits(bridge.ComputeCPUOnly)
 ```
 
-This creates the standard CoreML package structure with weights in `Data/com.apple.CoreML/weights/weight.bin`.
+On Intel Macs, the default `ComputeAll` may cause crashes with certain models. Setting `ComputeCPUOnly` resolves this issue.
 
-## Project Structure
+## Example
 
-```
-go-coreml/
-|-- blob/                  # Weight blob storage
-|   |-- format.go          # Blob file format structs
-|   +-- writer.go          # Blob file writer
-|-- gomlx/                 # GoMLX backend implementation
-|   |-- backend.go         # Backend interface
-|   |-- function.go        # Operation implementations
-|   +-- executable.go      # Model execution
-|-- internal/
-|   +-- bridge/            # Low-level cgo bindings to CoreML
-|       |-- bridge.h       # C-compatible function declarations
-|       |-- bridge.m       # Objective-C implementation
-|       +-- bridge.go      # cgo wrapper
-|-- model/
-|   |-- builder.go         # MIL program builder
-|   |-- ops.go             # MIL operation implementations
-|   |-- serialize.go       # Model serialization
-|   +-- serialize_blob.go  # Blob-aware serialization
-|-- runtime/
-|   +-- runtime.go         # High-level compilation and execution
-+-- proto/
-    +-- coreml/
-        |-- milspec/       # Generated Go types from MIL.proto
-        |-- spec/          # Generated Go types from Model.proto
-        +-- *.proto        # CoreML protobuf definitions
-```
+A complete example is available at [examples/yolo26.go](examples/yolo26.go) — object detection using a YOLO26 model exported from Ultralytics:
 
-## Development
+1. Export the model to CoreML `.mlpackage` with `model.export()`
+2. The program automatically compiles and loads the model
+3. Reads an image, applies letterbox resizing, and runs inference
+4. Parses the output (300 detections)
 
-```bash
-# Build
-go build ./...
+## Differences from the Original Project
 
-# Test
-go test ./...
-
-# Update protobuf files from coremltools
-cd proto/coreml && ./update_protos.sh
-
-# Regenerate Go code from protobufs
-go generate ./...
-```
+| | gomlx/go-darwinml | coreml-go |
+|---|---|---|
+| **Focus** | Model building + training + inference | Inference only |
+| **Load existing models** | ❌ Not supported | ✅ Supports `.mlpackage` / `.mlmodelc` |
+| **Model building** | ✅ Included | ❌ Removed |
+| **Training pipeline** | ✅ Included | ❌ Removed |
+| **API style** | Builder chain API | Minimal inference-focused API |
 
 ## License
 
-Apache 2.0 - see LICENSE file.
-
-CoreML protobuf definitions are from [Apple's coremltools](https://github.com/apple/coremltools)
-and are licensed under BSD-3-Clause.
+This project is licensed under the MIT License.

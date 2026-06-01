@@ -1,15 +1,8 @@
-# Compiled binaries
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Test binary
-*.test
-
-# Output of go coverage tool
-*.out
 
 # IDE directories
 .idea/
@@ -20,9 +13,9 @@
 # macOS
 .DS_Store
 
+# CoreML compiled models (.mlmodelc is a build artifact from .mlpackage)
+*.mlmodelc
+*.mlpackage
+
 # Temporary directories
 tmp/
-
-# Go workspace (local development only)
-go.work
-go.work.sum
