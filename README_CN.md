@@ -125,12 +125,16 @@ err = model.PredictWithImages(
 |---|---|
 | `bridge.CompileModel(packagePath, outputDir)` | 编译 `.mlpackage` 为 `.mlmodelc`，返回编译后路径 |
 | `bridge.LoadModel(path)` | 加载 `.mlmodelc`，返回 `*Model` |
-| `model.Close()` | 释放模型资源 |
 
-### 推理
+### 模型
 
 | 方法 | 说明 |
 |---|---|
+| `model.Close()` | 释放模型资源 |
+| `model.InputCount() int` | 返回模型输入数量 |
+| `model.OutputCount() int` | 返回模型输出数量 |
+| `model.InputName(index int) string` | 返回指定索引的输入名称 |
+| `model.OutputName(index int) string` | 返回指定索引的输出名称 |
 | `model.Predict(inputNames, inputs, outputNames, outputs)` | 执行推理，输入/输出均为 `TensorHandle` |
 | `model.PredictWithImages(inputNames, images, outputNames, outputs)` | 图像输入推理，输入为 `*ImageInput`，输出为 `TensorHandle` |
 
@@ -139,9 +143,14 @@ err = model.PredictWithImages(
 | 函数 / 方法 | 说明 |
 |---|---|
 | `bridge.NewTensor[T](shape)` | 创建类型化张量，`T` 支持 `float32`、`int32`、`int64`、`bool` |
-| `tensor.Data() []T` | 零拷贝获取底层数据切片 |
-| `tensor.Shape() []int64` | 获取形状 |
 | `tensor.Close()` | 释放张量资源 |
+| `tensor.Rank() int` | 返回张量维度数 |
+| `tensor.Dim(axis int) int64` | 返回指定维度的大小 |
+| `tensor.Shape() []int64` | 返回张量形状 |
+| `tensor.DType() DType` | 返回数据类型 |
+| `tensor.SizeBytes() int64` | 返回数据总大小（字节） |
+| `tensor.Data() []T` | 零拷贝获取底层数据切片 |
+| `tensor.DataPtr() unsafe.Pointer` | 返回底层数据指针 |
 
 ### 图像输入
 

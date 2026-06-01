@@ -125,23 +125,32 @@ err = model.PredictWithImages(
 |---|---|
 | `bridge.CompileModel(packagePath, outputDir)` | Compile `.mlpackage` to `.mlmodelc`, returns compiled path |
 | `bridge.LoadModel(path)` | Load a `.mlmodelc`, returns `*Model` |
-| `model.Close()` | Release model resources |
 
-### Inference
+### Model
 
 | Method | Description |
 |---|---|
-| `model.Predict(inputNames, inputs, outputNames, outputs)` | Run inference with tensor inputs/outputs |
-| `model.PredictWithImages(inputNames, images, outputNames, outputs)` | Image input inference; inputs are `*ImageInput`, outputs are `TensorHandle` |
+| `model.Close()` | Release model resources |
+| `model.InputCount() int` | Return the number of model inputs |
+| `model.OutputCount() int` | Return the number of model outputs |
+| `model.InputName(index int) string` | Return the input name at the given index |
+| `model.OutputName(index int) string` | Return the output name at the given index |
+| `model.Predict(inputNames, inputs, outputNames, outputs) error` | Run inference with tensor inputs/outputs |
+| `model.PredictWithImages(inputNames, images, outputNames, outputs) error` | Image input inference; inputs are `*ImageInput`, outputs are `TensorHandle` |
 
 ### Tensors
 
 | Function / Method | Description |
 |---|---|
 | `bridge.NewTensor[T](shape)` | Create a typed tensor. `T` supports `float32`, `int32`, `int64`, `bool` |
-| `tensor.Data() []T` | Zero-copy access to the underlying data slice |
-| `tensor.Shape() []int64` | Get the tensor shape |
 | `tensor.Close()` | Release tensor resources |
+| `tensor.Rank() int` | Return the number of dimensions |
+| `tensor.Dim(axis int) int64` | Return the size of the given dimension |
+| `tensor.Shape() []int64` | Return the tensor shape |
+| `tensor.DType() DType` | Return the data type |
+| `tensor.SizeBytes() int64` | Return the total data size in bytes |
+| `tensor.Data() []T` | Return a zero-copy view of the underlying data slice |
+| `tensor.DataPtr() unsafe.Pointer` | Return an unsafe pointer to the underlying data |
 
 ### Image Input
 
