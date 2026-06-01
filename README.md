@@ -177,6 +177,3 @@ A complete example is available at [examples/yolo26.go](examples/yolo26.go) — 
 | **Training pipeline** | ✅ Included | ❌ Removed |
 | **API style** | Builder chain API | Minimal inference-focused API |
 
-## License
-
-This project is licensed under the MIT License.
