@@ -17,5 +17,8 @@
 *.mlmodelc
 *.mlpackage
 
+# Go binaries built in subdirectories
+examples/examples
+
 # Temporary directories
 tmp/
