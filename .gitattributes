@@ -1,0 +1,2 @@
+bridge/*.m linguist-language=Go
+bridge/*.h linguist-language=Go
